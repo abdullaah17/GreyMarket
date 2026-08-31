@@ -70,3 +70,57 @@ Sources that yield this profile:
 
 Append to `parts.csv` with the same columns. `greymarket.py scan` reads the
 `mpn` column and ignores the rest, so provenance costs nothing at runtime.
+
+## Vintage: the second filter, and it is decisive
+
+The selection rule above says *whether* a part can force a buyer to a
+broker. Vintage says *whether it has happened yet*.
+
+S-1 requires `authorized_stock == 0`. A part whose last-time-buy date has
+only just passed still has authorized stock by construction. It satisfies
+every criterion above and still cannot produce an S-1 hit. Filter on
+`last_time_ship`, not just on the selection rule.
+
+The list as built shows the problem plainly — 49 of 54 parts have a last-ship
+date in 2026–2029, so by the vendor's own dates the channel is still open:
+
+| last_time_ship | parts | state |
+|---|---|---|
+| 2022-05-31 | 5 | drained, ~4 years |
+| 2026-02-27 | 6 | still draining |
+| 2027-01-30 and later | 43 | still draining |
+
+Use this list for **run 0** (measure `authorized_stock`), not run 1. See
+PRD sections 13 and 15 — the kill criterion is pre-registered to apply only
+to a sample where `authorized_stock == 0` for at least half the parts.
+
+For run 1, collect 2019–2022 full withdrawals under the same selection rule.
+
+## Rejected sources, and why
+
+- **TI PDN 20231212001.3** — ~200 devices, zero candidates. Variant
+  retirements with functionally equivalent replacements still sold.
+- **ADI PDN 23_0120, 22_0028** — pin-to-pin replacement; RoHS package swap.
+- **Digi-Key-hosted scan of NXP 202211001DN** — *extraction quality*, not
+  selection. The PDF parses with corrupted part numbers (`MCB9808GBMAE`,
+  `MC53212988577`), 12NC codes bleeding into the part-number column, and
+  "Sale Source" where the notice reads "Sole Source". A garbled MPN that
+  happens to land on a different real part fails silently, which is the one
+  transcription error that does not announce itself.
+
+  **Prefer the vendor's own HTML notice pages.** `nxp.com/pcn/<id>` and
+  `analog.com/media/en/PCN/*.pdf` both extracted cleanly; distributor-hosted
+  PDF scans did not.
+
+## Guard against a silent transcription error
+
+A mistyped MPN usually returns no match, which is visible. The dangerous case
+is a typo landing on a different real part — plausible in these families,
+where suffixes encode temperature grade and package (`DSP56F805FV80E` vs
+`DSP56F805FV80`).
+
+When `scan` returns results, check the manufacturer on each row against the
+`manufacturer` column here. A wrong-but-real MPN often keeps the right
+manufacturer, so also spot-check that the returned part family matches the
+`family` column. Rows whose manufacturer disagrees with the notice are
+transcription errors, not market findings.

@@ -58,13 +58,41 @@ $200 billion annually across all sectors that use electronics.
 | Buy authorized only | Cheapest option | Impossible for discontinued parts. That's the whole problem. |
 | Trusted broker relationships | Free | Relationship-based, not evidence-based. Doesn't scale. |
 
-### 2.4 The gap
+### 2.4 How much of the obsolete market S-1 can even apply to
+
+**Measured, 1 September 2026.** "Obsolete" and "forced to the open
+market" are not the same population, and the gap is large.
+
+TI PDN 20231212001.3 lists roughly 200 discontinued devices. Applying
+the selection rule in `CURATION.md` — a part qualifies only if the
+authorized channel offers no way out — it yielded **zero** candidates.
+Almost every entry is a `G4`/`E4`, tube or small-reel *variant*
+retirement with a functionally equivalent part still sold through
+authorized distributors. Two ADI notices were rejected the same way
+(pin-to-pin replacement; RoHS package swap).
+
+Notices that did qualify were structural: a dead foundry process, a
+scaled-down fab, tooling past vendor end-of-support, with the
+replacement column empty or the successor requiring redesign.
+
+**Consequence for sizing.** The population where S-1 can fire at all is
+a small fraction of the population of "obsolete parts", and the
+counterfeit-cost figure in 2.2 covers all electronics, not this subset.
+Any market size quoted from obsolescence volume will be far too large.
+Size the market from *forced-to-broker* parts, and treat that fraction
+as unmeasured — one notice is not an estimate.
+
+This also validates the selection rule harder than a positive result
+would have: a filter that rejects 200 parts on a stated principle is
+discriminating, not decorative.
+
+### 2.5 The gap
 
 **Nothing scores risk before purchase.** Every existing control is
 reactive. A buyer choosing between four brokers offering the same
 obsolete part has no evidence-based way to rank them.
 
-### 2.5 What existing products do
+### 2.6 What existing products do
 
 - **SiliconExpert** — large component reference database. Cross-references
   known GIDEP alerts against parts already on order. Aimed at large
@@ -528,13 +556,32 @@ because category discovery bills for the Active parts it discards (see
 FR-1). Both assumptions are worth re-checking before paying — a smaller
 sample that still answers question 4 would lower the floor directly.
 
-**Two runs, two different questions. Do not buy for the second before
-the first has answered.**
+**Three runs, three different questions. Do not buy for a later one
+before the earlier one has answered.**
 
 | | parts | question it answers | run it when |
 |---|---|---|---|
-| Run 1 | 30–50 | Does `phantom_stock` fire *at all*? | as soon as the curated list exists |
+| Run 0 | 30–50 | Has the channel actually drained on recent withdrawals? | now; measures `authorized_stock`, does **not** test S-1 |
+| Run 1 | 30–50 | Does `phantom_stock` fire *at all*? | only on a drained-vintage list (see below) |
 | Run 2 | ~200 | Is the threshold any good? | only if run 1 came back positive |
+
+**Run 0 exists because vintage is decisive, not incidental.** S-1
+requires `authorized_stock == 0`. A part whose last-time-buy date has
+only just passed still has authorized stock by construction, so an empty
+S-1 result on a recent-vintage list is the overwhelmingly likely outcome
+*whether or not the premise is true*. Running such a list against the
+section 15 kill criterion would fire it for a reason it was not designed
+to detect, and the honest response would be to override it — which is
+the exact behaviour the criterion exists to prevent.
+
+So the current `parts.csv` is not run 1 material. Of its 54 parts, 49
+have a last-ship date in 2026–2029: by the vendor's own dates the
+authorized channel is still open. Run it to *measure* `authorized_stock`
+across the sample. That is cheap, informative, and consumes no kill
+criterion. If authorized stock is non-zero nearly everywhere, the
+vintage problem is confirmed with data and the required notice age
+follows from it. If it is already zero in a meaningful fraction, those
+parts become valid run 1 input.
 
 These are not underpowered and full-strength versions of one
 experiment. They answer different questions, and run 2 is worth nothing
@@ -598,15 +645,32 @@ running the tool. They are independent and should run in parallel.
 - At least one names a specific incident with a cost attached
 
 **Kill if:**
-- Zero `phantom_stock` hits across 30–50 *well-chosen* obsolete parts
-  (run 1, section 13). This counts as evidence against the premise, not
-  as an underpowered sample. Lifecycle parsing is confirmed working
-  against live data (section 9), which was the only legitimate reason
-  to discount an empty result — so that explanation is spent. If the
-  parts were genuinely chosen for active repair demand and a dead
-  authorized channel, an empty run 1 is a finding. Treating it as
-  "too small to tell" and proceeding to run 2 anyway is how these
-  criteria stop being falsifiable.
+- Zero `phantom_stock` hits across 30–50 *well-chosen, drained-vintage*
+  obsolete parts (run 1, section 13). This counts as evidence against
+  the premise, not as an underpowered sample. Lifecycle parsing is
+  confirmed working against live data (section 9), which was the only
+  legitimate reason to discount an empty result — so that explanation is
+  spent. Treating an empty run 1 as "too small to tell" and proceeding
+  to run 2 anyway is how these criteria stop being falsifiable.
+
+  **Pre-registered exception, written before any run.** This criterion
+  applies only to a list whose authorized channel has had time to drain.
+  It does not fire on a list where the channel is still open, because
+  S-1 cannot fire there by construction.
+
+  The condition is quantitative and must not be invoked qualitatively:
+
+  ```
+  the criterion applies only if, across the sample,
+  authorized_stock == 0 for at least half the parts
+  ```
+
+  Measure that with run 0 *before* run 1. If the sample fails the
+  condition, run 1 has not been run — collect an older list and try
+  again. Invoking "the vintage was wrong" after seeing an empty result,
+  rather than testing it beforehand, is an excuse and is indistinguish-
+  able in this document from a pre-registered condition. That is why the
+  test is named here and why run 0 comes first.
 - Fewer than 5 anomalies across 200 parts (run 2)
 - Interviewees consistently say broker choice is relationship-based
 - The problem is real but sits entirely with distributors who already
