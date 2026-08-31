@@ -58,6 +58,23 @@ _NRND_RE = re.compile(r"""
       \bnrnd\b
     | \bnot \s+ recommended\b
     | \bnot \s+ for \s+ new \s+ design
+    # Last Time Buy is NRND on purpose, not by oversight. Do not move
+    # it to _OBSOLETE_RE without reading this.
+    #
+    # LTB means discontinuation is announced and the authorized channel
+    # is in its final ordering window -- still open, still selling. That
+    # is the transition state, not exhaustion, and S-1's entire claim is
+    # that the legitimate channel is exhausted. Firing on a part an
+    # engineer can still order today is the fastest way to lose the room.
+    #
+    # Little recall is lost, and what is lost is deferred rather than
+    # gone: LTB is a state with an expiry. The vendor updates the field
+    # when the window closes, the part lands in OBSOLETE on its own, and
+    # S-1 picks it up then. Classifying it obsolete early fires the same
+    # detection sooner, on the one part of the lifecycle where "channel
+    # exhausted" is least likely to be true.
+    #
+    # Revisit once real data shows how often LTB actually appears.
     | \blast [\s\-_]* time [\s\-_]* buy\b
     | \bltb\b
 """, re.IGNORECASE | re.VERBOSE)
@@ -131,7 +148,7 @@ _CASES = [
     ("nrnd",                                      NRND),
     ("Not Recommended for New Designs",           NRND),
     ("NRND / Last Time Buy",                      NRND),
-    ("Last Time Buy",                             NRND),
+    ("Last Time Buy",                             NRND),  # deliberate; see _NRND_RE
     ("Not For New Designs",                       NRND),
 
     # active
