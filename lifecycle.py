@@ -111,6 +111,7 @@ _CASES = [
     # obsolete -- including the parenthetical and slash forms that the
     # previous exact-match implementation silently dropped
     ("Obsolete",                                  OBSOLETE),
+    ("obsolete",                                  OBSOLETE),
     ("Obsolete (End of Life)",                    OBSOLETE),
     ("EOL / Discontinued",                        OBSOLETE),
     ("No Longer Manufactured",                    OBSOLETE),
@@ -120,12 +121,14 @@ _CASES = [
     ("EOL",                                       OBSOLETE),
     ("Inactive",                                  OBSOLETE),
     ("Discontinued at Digi-Key",                  OBSOLETE),
+    ("Discontinued at distributor",               OBSOLETE),
     ("Obsolete / Discontinued",                   OBSOLETE),
     # obsolete wins over NRND when a string carries both
     ("Discontinued - Not Recommended for New Designs", OBSOLETE),
 
     # nrnd -- still manufactured, so not an S-1 candidate
     ("NRND",                                      NRND),
+    ("nrnd",                                      NRND),
     ("Not Recommended for New Designs",           NRND),
     ("NRND / Last Time Buy",                      NRND),
     ("Last Time Buy",                             NRND),
@@ -134,6 +137,7 @@ _CASES = [
     # active
     ("Active",                                    ACTIVE),
     ("Production",                                ACTIVE),
+    ("Active - Production",                       ACTIVE),
     ("In Production",                             ACTIVE),
     ("New Product",                               ACTIVE),
     ("Preliminary",                               ACTIVE),
