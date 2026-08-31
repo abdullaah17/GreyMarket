@@ -5,3 +5,9 @@ __pycache__/
 # run artifacts
 parts.csv
 listings.csv
+
+# credentials -- never commit; pass via environment
+.env
+.env.*
+!.env.example
+*.pem

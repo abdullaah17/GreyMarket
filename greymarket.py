@@ -666,7 +666,28 @@ def auth_or_die() -> str:
     cid, sec = os.getenv("NEXAR_CLIENT_ID"), os.getenv("NEXAR_CLIENT_SECRET")
     if not (cid and sec):
         sys.exit("Set NEXAR_CLIENT_ID and NEXAR_CLIENT_SECRET (or use --demo)")
-    return get_token(cid, sec)
+    try:
+        return get_token(cid, sec)
+    except requests.RequestException as e:
+        sys.exit(f"Could not obtain a token: {e}\n"
+                 f"Check NEXAR_CLIENT_ID and NEXAR_CLIENT_SECRET.")
+
+
+def die_on_api_error(e: Exception) -> None:
+    """Turn an API refusal into something readable.
+
+    discover has no per-part error tolerance the way scan does -- one
+    bad response ends the run -- and it is the step most likely to meet
+    a quota or entitlement problem, so the message has to say which.
+    """
+    msg = str(e)
+    print(f"\nAPI refused the request: {msg}", file=sys.stderr)
+    if "limit" in msg.lower() or "plan" in msg.lower():
+        print("\nThis is an account entitlement problem, not a code or "
+              "credential problem.\nThe token was issued; the plan has no "
+              "part quota. Add the Supply API\nto the app in the Nexar "
+              "portal, or contact api@nexar.com.", file=sys.stderr)
+    sys.exit(1)
 
 
 def main() -> None:
@@ -686,7 +707,10 @@ def main() -> None:
     args = ap.parse_args()
 
     if args.cmd == "discover":
-        discover(auth_or_die(), args.category, args.limit, args.out)
+        try:
+            discover(auth_or_die(), args.category, args.limit, args.out)
+        except (RuntimeError, requests.RequestException) as e:
+            die_on_api_error(e)
         return
 
     if args.demo:
