@@ -195,6 +195,7 @@ def discover(token: str, category: str, limit: int, out: str) -> None:
     """
     found, start, page = [], 0, 100
     seen_raw: Counter = Counter()
+    seen_class: Counter = Counter()
 
     while len(found) < limit and start < 1000:
         data = gql(token, DISCOVER_QUERY,
@@ -207,6 +208,7 @@ def discover(token: str, category: str, limit: int, out: str) -> None:
             lc = lifecycle_from_specs(part.get("specs"))
             klass = classify(lc)
             seen_raw[lc.strip() or "<empty>"] += 1
+            seen_class[klass] += 1
             if klass in (OBSOLETE, NRND):
                 found.append({
                     "mpn": part["mpn"],
@@ -230,14 +232,53 @@ def discover(token: str, category: str, limit: int, out: str) -> None:
     print(f"\n{len(found)} parts -> {out}  "
           f"({n_obs} obsolete, {len(found) - n_obs} NRND)")
 
-    if not found:
-        # The old failure mode was returning zero and looking exactly
-        # like a genuine negative. Show what the vendor actually said.
-        print("\nNothing matched. Raw lifecycle values seen, most common first:")
-        for value, count in seen_raw.most_common(15):
-            print(f"    {count:>5}  {value!r}  -> {classify(value)}")
-        print("\nIf real statuses appear above as UNKNOWN, add them to "
-              "lifecycle.py and re-run its tests.")
+    # Always report the classification split of everything scanned, not
+    # just the kept rows. A low-but-non-zero count is the misleading
+    # outcome: it reads as success while most parts silently classify as
+    # UNKNOWN, and it quietly shrinks S-4's denominator, which counts
+    # only parts that classified as OBSOLETE.
+    scanned = sum(seen_class.values())
+    if not scanned:
+        print("\nNo parts returned at all. Nothing to classify.")
+        return
+
+    print(f"\nclassification of all {scanned} parts scanned:")
+    for k in (OBSOLETE, NRND, ACTIVE, UNKNOWN):
+        n = seen_class.get(k, 0)
+        print(f"    {k:<9} {n:>6}  {n / scanned:>6.1%}")
+
+    unknown_share = seen_class.get(UNKNOWN, 0) / scanned
+    if unknown_share < 0.30:
+        return
+
+    # UNKNOWN dominates. Two different problems with two different fixes,
+    # separated by whether the vendor gave us a string at all.
+    empty = seen_raw.get("<empty>", 0)
+    unknown_total = seen_class.get(UNKNOWN, 0)
+    empty_share = empty / unknown_total if unknown_total else 0
+
+    print(f"\n  WARNING: {unknown_share:.0%} of parts scanned classified "
+          f"as UNKNOWN.")
+    print("  Do not read the counts above as a result until this is "
+          "resolved.")
+    print("\n  raw lifecycle values seen, most common first:")
+    for value, count in seen_raw.most_common(15):
+        print(f"    {count:>5}  {value!r}  -> {classify(value)}")
+
+    if empty_share >= 0.5:
+        print(f"\n  {empty_share:.0%} of the UNKNOWN parts carried no "
+              f"lifecycle string at all.")
+        print("  The field is sparse or absent on these sources, not "
+              "misspelled. A")
+        print("  corrected attribute key will not fix it -- lifecycle "
+              "needs a fallback")
+        print("  source. Check whether the key is present on some "
+              "manufacturers only.")
+    else:
+        print("\n  The values above are populated but unrecognised: a "
+              "vocabulary gap.")
+        print("  Add them to lifecycle.py and re-run its tests "
+              "(python3 lifecycle.py).")
 
 
 # ----------------------------------------------------------------------
