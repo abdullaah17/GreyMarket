@@ -187,17 +187,31 @@ def now_iso() -> str:
 # discover
 # ----------------------------------------------------------------------
 
-def discover(token: str, category: str, limit: int, out: str) -> None:
+def discover(token: str, category: str, limit: int, out: str,
+             max_fetch: int = 100) -> None:
     """Walk a category, keep the parts that are obsolete or NRND.
 
     NRND parts are collected but classified separately -- they are still
     in production, so they are not S-1 candidates.
     """
-    found, start, page = [], 0, 100
+    # --limit caps what is KEPT. The API bills what is FETCHED, and the
+    # walk fetches a full page whether or not anything in it matches, so
+    # --limit is no protection at all against burning an allowance. On a
+    # free evaluation app the entire lifetime budget can be one or two
+    # figures; a single uncapped page would spend all of it. max_fetch
+    # is the number that actually costs money.
+    page = min(100, max_fetch)
+    found, start = [], 0
     seen_raw: Counter = Counter()
     seen_class: Counter = Counter()
 
-    while len(found) < limit and start < 1000:
+    print(f"  fetch budget: {max_fetch} parts "
+          f"(pages of {page}); --limit {limit} caps what is kept")
+
+    while len(found) < limit and start < max_fetch:
+        page = min(page, max_fetch - start)
+        if page <= 0:
+            break
         data = gql(token, DISCOVER_QUERY,
                    {"q": category, "limit": page, "start": start})
         results = (data.get("supSearch") or {}).get("results") or []
@@ -218,7 +232,7 @@ def discover(token: str, category: str, limit: int, out: str) -> None:
                     "lifecycle_class": klass,
                 })
         start += page
-        print(f"  scanned {start}, kept {len(found)}")
+        print(f"  fetched {start}/{max_fetch}, kept {len(found)}")
         time.sleep(0.4)
 
     found = found[:limit]
@@ -737,7 +751,10 @@ def main() -> None:
 
     d = sub.add_parser("discover")
     d.add_argument("--category", required=True)
-    d.add_argument("--limit", type=int, default=200)
+    d.add_argument("--limit", type=int, default=200,
+                   help="max parts KEPT (does not limit API spend)")
+    d.add_argument("--max-fetch", type=int, default=100,
+                   help="max parts FETCHED -- this is what the API bills")
     d.add_argument("--out", default="parts.csv")
 
     s = sub.add_parser("scan")
@@ -749,7 +766,8 @@ def main() -> None:
 
     if args.cmd == "discover":
         try:
-            discover(auth_or_die(), args.category, args.limit, args.out)
+            discover(auth_or_die(), args.category, args.limit, args.out,
+                     args.max_fetch)
         except (RuntimeError, requests.RequestException) as e:
             die_on_api_error(e)
         return
