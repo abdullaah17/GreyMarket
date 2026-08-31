@@ -156,13 +156,34 @@ happened. Do not build v0.3 from this document.
 
 ## 6. Functional requirements
 
-### FR-1 Part discovery
-- **FR-1.1** Given a category term, return parts whose lifecycle status
-  indicates end-of-life.
+### FR-1 Part input
+
+**A curated part list is the primary input path.** Category discovery is
+a convenience for exploration, not the collection strategy. This is an
+inversion of the original plan and it is a design conclusion, not a
+budget one.
+
+The supply API exposes search, not filter. There is no way to express
+"obsolete only" in the query, so discovery works by ranking a category
+by relevance and then discarding everything that comes back Active.
+Lifecycle is a rare attribute in a relevance-ranked result set, so the
+caller pays per part returned and throws most of them away. That ratio
+does not improve with a larger budget — it is inherent to using a search
+endpoint to do a filter job. Measured: a 10-part probe of
+`"microcontroller"` returned 10 parts, 100% ACTIVE, 0 kept.
+
+- **FR-1.1** Accept a user-supplied part list. This is the path that
+  every real run should use.
 - **FR-1.2** Handle inconsistent lifecycle vocabulary across
-  manufacturers (Obsolete / EOL / Discontinued / NRND).
-- **FR-1.3** Accept a user-supplied part list as an alternative input.
+  manufacturers (Obsolete / EOL / Discontinued / NRND). Implemented in
+  `lifecycle.py` with a regression test over observed vendor strings.
+- **FR-1.3** Given a category term, return parts whose lifecycle status
+  indicates end-of-life. Exploration only; expect to discard most of
+  what is fetched.
 - **FR-1.4** Paginate to a requested limit; persist to CSV.
+- **FR-1.5** Cap what is *fetched*, separately from what is *kept*. The
+  API bills the former. `--limit` caps kept rows and is not a spend
+  control; `--max-fetch` is.
 
 ### FR-2 Offer collection
 - **FR-2.1** For each part, retrieve every seller offer available:
@@ -379,21 +400,39 @@ implausibility of the claim *is* the signal.
 ## 9. Architecture
 
 ```
-  Nexar API  ──►  discover  ──►  parts.csv
-                                     │
-                                     ▼
-                                fetch_offers
-                                     │
-                                     ▼
-                             aggregate per part
-                                     │
-                                     ▼
-                              score (S-1..S-4)
-                                     │
-                        ┌────────────┴────────────┐
-                        ▼                         ▼
-                   listings.csv            terminal report
+  curated MPN list  ─────────────►  parts.csv     PRIMARY PATH
+  (manual: PCN notices,                 │         hand-built, see s13
+   distributor filters)                 │
+                                        │
+  Nexar API  ──►  discover  ────────────┤         exploration only
+                  (search, not filter;  │         discards most of
+                   bills what it        │         what it pays for)
+                   discards)            │
+                                        ▼
+                                   fetch_offers
+                                        │
+                                        ▼
+                                aggregate per part
+                                        │
+                                        ▼
+                                 score (S-1..S-4)
+                                        │
+                           ┌────────────┴────────────┐
+                           ▼                         ▼
+                      listings.csv            terminal report
 ```
+
+**Validated against live data, 1 September 2026.** A 10-part probe
+confirmed the lifecycle attribute is present in Nexar responses, that
+`lifecycle_from_specs` locates it, and that the vocabulary in
+`lifecycle.py` matches real vendor strings: 10 parts returned, 0%
+UNKNOWN, 100% ACTIVE, 0 kept. Everything from the API boundary through
+classification is confirmed working on real data.
+
+**Not validated.** Everything downstream of classification. No obsolete
+part has passed through the scorer, so S-1 through S-4 and every
+threshold in them have only ever seen synthetic data constructed to make
+them fire. They remain unfalsified rather than verified.
 
 **v0.1** — single Python file, CSV in/out, no database, no server.
 Correct for the stage. Do not add infrastructure before there is a user.
@@ -467,6 +506,45 @@ buyer. Entry is via medical, industrial and rail in Europe and Asia.
 **API dependency.** Nexar is currently a single point of failure for all
 input data. Acceptable at prototype stage, unacceptable as a business.
 Mitigation deferred until there is a business.
+
+**Validation has a floor cost, and it is above the free tier.** State
+the arithmetic rather than the conclusion, so this can be recomputed
+when either number changes:
+
+```
+parts needed for a meaningful S-1 read     ~200 obsolete parts
+API cost via a curated list                ~1 part billed per part used
+                                           -----------------------------
+                                           ~200 parts of allowance
+
+observed free allowance, evaluation app     10 parts
+observed allowance, self-created app         0 parts
+```
+
+Roughly a 20x shortfall against the observed free tier. The 200 figure
+is the validation threshold in section 15 and is itself a judgement, not
+a computed number; the ~1:1 ratio holds only on the curated-list path,
+because category discovery bills for the Active parts it discards (see
+FR-1). Both assumptions are worth re-checking before paying — a smaller
+sample that still answers question 4 would lower the floor directly.
+
+Consequence: the first real run needs a paid plan. Not a blocker, but
+it is a real cost that has to be spent before there is any evidence,
+and it should be budgeted rather than discovered.
+
+**The obsolete part list is a manual dependency, and it gates the first
+run.** Because a curated list is now the primary input (FR-1), somebody
+has to build it: vendor PCN and EOL notices, distributor lifecycle
+filters, obsolescence databases. This is hand work measured in hours and
+it cannot be designed away — it is the input the entire pipeline runs
+on. The first real run is gated on this, not on quota.
+
+Curate for signal, not convenience. If S-1 is real anywhere, it is on
+parts with **active repair demand and a dead authorized channel** —
+semiconductors in long-life industrial, medical and rail equipment.
+200 well-chosen obsolete MPNs is a better experiment than 2,000
+arbitrary ones, and it costs less to run. That list is also the seed of
+the product itself, so the hour spent building it is not overhead.
 
 **Legal exposure.** Publishing seller-level risk scores is defamation
 territory. Language must remain anomaly-based throughout — in the
