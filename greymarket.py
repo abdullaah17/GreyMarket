@@ -85,6 +85,13 @@ class Offer:
     # filled in during scoring
     lifecycle_class: str = UNKNOWN
     authorized_stock: int = 0
+    # Number of authorized OFFERS on this part, which is not the same
+    # question as how much stock they hold. authorized_stock == 0 with
+    # authorized offers present means the channel drained. The same zero
+    # with no authorized offers at all means the data source has no
+    # authorized coverage for this part -- an artefact, not a market
+    # fact. They support opposite conclusions and must not be collapsed.
+    authorized_offers: int = 0
     broker_stock: int = 0
     median_price: float | None = None
     price_ratio: float | None = None
@@ -111,7 +118,8 @@ CSV_FIELDS = [
     "mpn", "manufacturer", "lifecycle", "lifecycle_class",
     "seller", "authorized", "quantity", "unit_price", "currency",
     "price_qty", "price_break_count", "retrieved_at",
-    "authorized_stock", "broker_stock", "median_price", "price_ratio",
+    "authorized_stock", "authorized_offers", "broker_stock",
+    "median_price", "price_ratio",
     "seller_obsolete_share", "flags",
 ]
 
@@ -358,12 +366,14 @@ def score(offers: list[Offer]) -> None:
 
     for group in by_mpn.values():
         auth_stock = sum(o.quantity for o in group if o.authorized)
+        auth_offers = sum(1 for o in group if o.authorized)
         broker_stock = sum(o.quantity for o in group if not o.authorized)
         prices = [o.unit_price for o in group if o.unit_price > 0]
         median = statistics.median(prices) if prices else None
 
         for o in group:
             o.authorized_stock = auth_stock
+            o.authorized_offers = auth_offers
             o.broker_stock = broker_stock
             if median:
                 o.median_price = round(median, 4)
@@ -375,9 +385,25 @@ def score(offers: list[Offer]) -> None:
             if o.authorized or not o.is_obsolete:
                 continue
 
-            # the core signal: nobody legitimate has it, this guy has piles
-            if auth_stock == 0 and o.quantity >= BROKER_QTY_SUSPICIOUS:
+            # The core signal: nobody legitimate has it, this guy has
+            # piles. auth_offers > 0 is required, not incidental. S-1
+            # claims the authorized channel is exhausted. With zero
+            # authorized offers there is no evidence about the channel
+            # at all -- the part may simply have no authorized coverage
+            # in the data source. Firing there would assert channel
+            # exhaustion from an absence of data, which is exactly the
+            # unsupportable claim principle 2 forbids.
+            if (auth_offers > 0 and auth_stock == 0
+                    and o.quantity >= BROKER_QTY_SUSPICIOUS):
                 o.flags.append("phantom_stock")
+
+            # Same shape, no authorized coverage. Reported separately
+            # and never counted as S-1: these are either the strongest
+            # cases in the sample or pure data artefacts, and listing
+            # data alone cannot tell them apart.
+            if (auth_offers == 0
+                    and o.quantity >= BROKER_QTY_SUSPICIOUS):
+                o.flags.append("no_authorized_coverage")
 
             # broker holds more than the entire authorized channel, and
             # holds enough of it for the comparison to mean anything
@@ -432,6 +458,7 @@ def report(offers: list[Offer], demo: bool = False) -> None:
     classes = Counter(o.lifecycle_class for o in offers)
     obsolete_parts = {o.mpn.upper() for o in offers if o.is_obsolete}
     phantom = [o for o in offers if "phantom_stock" in o.flags]
+    uncovered = [o for o in offers if "no_authorized_coverage" in o.flags]
     catalogue = [o for o in offers if "catalogue_implausibility" in o.flags]
     flagged = [o for o in offers if o.flags]
 
@@ -498,6 +525,55 @@ def report(offers: list[Offer], demo: bool = False) -> None:
         print(f"\n  S-4 skipped: {len(obsolete_parts)} obsolete parts, "
               f"needs {MIN_OBSOLETE_SAMPLE}.")
 
+    if uncovered:
+        print(f"\n  no authorized coverage, broker claims piles: "
+              f"{len(uncovered)} offers")
+        print("    Shaped exactly like phantom_stock but NOT counted as it.")
+        print("    Either the strongest cases here or an artefact of the")
+        print("    data source. Listing data alone cannot separate them;")
+        print("    confirm authorized coverage another way before using.")
+
+    # RUN 0. Not a signal -- a measurement of whether the authorized
+    # channel has actually drained, which S-1 assumes and cannot test.
+    by_part: dict[str, list] = {}
+    for o in offers:
+        if o.is_obsolete:
+            by_part.setdefault(o.mpn.upper(), []).append(o)
+    if by_part:
+        drained, stocked, no_cover = [], [], []
+        for mpn, g in by_part.items():
+            o = g[0]
+            if o.authorized_offers == 0:
+                no_cover.append(mpn)
+            elif o.authorized_stock == 0:
+                drained.append(mpn)
+            else:
+                stocked.append(mpn)
+        n = len(by_part)
+        print(f"\n  CHANNEL STATE  ({n} obsolete parts)")
+        print(f"    drained      {len(drained):>4}  {len(drained)/n:>6.1%}  "
+              f"authorized sellers present, zero stock -- S-1 can fire")
+        print(f"    stocked      {len(stocked):>4}  {len(stocked)/n:>6.1%}  "
+              f"authorized stock remains -- S-1 cannot fire")
+        print(f"    no coverage  {len(no_cover):>4}  {len(no_cover)/n:>6.1%}  "
+              f"no authorized offers at all -- data artefact, not a")
+        print(f"                                    market fact; excluded "
+              f"from the fraction")
+        testable = len(drained) + len(stocked)
+        if testable:
+            frac = len(drained) / testable
+            print(f"\n    drained fraction of parts with authorized "
+                  f"coverage: {frac:.1%}")
+            print(f"    PRD s15 pre-registered condition (>= 50%): "
+                  f"{'MET' if frac >= 0.5 else 'NOT MET'}"
+                  f" -- run 1 {'valid' if frac >= 0.5 else 'INVALID'} "
+                  f"on this sample")
+        else:
+            print("\n    No parts with authorized coverage. The drained "
+                  "fraction is undefined,")
+            print("    not zero. Nothing can be concluded about the "
+                  "channel from this sample.")
+
     print("\n  VERDICT")
     if len(phantom) >= 20:
         print("    Strong. The anomaly is real and common.")
@@ -549,6 +625,8 @@ WIDE_PRICE = (1.0, 1.6)
 # excluded from the per-scenario assertions.
 PART_SIGNALS = ("phantom_stock", "outstocks_channel", "underpriced")
 ALL_SIGNALS = PART_SIGNALS + ("catalogue_implausibility",)
+# Reported, never scored. Not a signal: an unresolvable ambiguity.
+OBSERVATIONS = ("no_authorized_coverage",)
 
 
 @dataclass
