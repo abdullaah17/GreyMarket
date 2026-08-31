@@ -528,9 +528,26 @@ because category discovery bills for the Active parts it discards (see
 FR-1). Both assumptions are worth re-checking before paying — a smaller
 sample that still answers question 4 would lower the floor directly.
 
-Consequence: the first real run needs a paid plan. Not a blocker, but
-it is a real cost that has to be spent before there is any evidence,
-and it should be budgeted rather than discovered.
+**Two runs, two different questions. Do not buy for the second before
+the first has answered.**
+
+| | parts | question it answers | run it when |
+|---|---|---|---|
+| Run 1 | 30–50 | Does `phantom_stock` fire *at all*? | as soon as the curated list exists |
+| Run 2 | ~200 | Is the threshold any good? | only if run 1 came back positive |
+
+These are not underpowered and full-strength versions of one
+experiment. They answer different questions, and run 2 is worth nothing
+until run 1 has returned a positive. A binary answer on the sharpest
+signal is the thing worth buying right now; a tuned threshold on an
+unanswered question is not.
+
+Sequencing follows from that. Build the curated list first, then price
+run 1 against a known part count. Buying an allowance before the list
+exists purchases capacity against an unknown denominator, and it is the
+tempting error because it is a purchase rather than an hour of work.
+30–50 parts may exceed the free tier by little enough to make run 1 a
+small spend rather than a real one.
 
 **The obsolete part list is a manual dependency, and it gates the first
 run.** Because a curated list is now the primary input (FR-1), somebody
@@ -581,8 +598,16 @@ running the tool. They are independent and should run in parallel.
 - At least one names a specific incident with a cost attached
 
 **Kill if:**
-- Fewer than 5 anomalies across 200 parts *with lifecycle parsing
-  verified working*
+- Zero `phantom_stock` hits across 30–50 *well-chosen* obsolete parts
+  (run 1, section 13). This counts as evidence against the premise, not
+  as an underpowered sample. Lifecycle parsing is confirmed working
+  against live data (section 9), which was the only legitimate reason
+  to discount an empty result — so that explanation is spent. If the
+  parts were genuinely chosen for active repair demand and a dead
+  authorized channel, an empty run 1 is a finding. Treating it as
+  "too small to tell" and proceeding to run 2 anyway is how these
+  criteria stop being falsifiable.
+- Fewer than 5 anomalies across 200 parts (run 2)
 - Interviewees consistently say broker choice is relationship-based
 - The problem is real but sits entirely with distributors who already
   test everything and see no gap
