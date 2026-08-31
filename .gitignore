@@ -1,0 +1,7 @@
+__pycache__/
+*.pyc
+.venv/
+
+# run artifacts
+parts.csv
+listings.csv
