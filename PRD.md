@@ -299,9 +299,22 @@ as expected, and without a floor S-2 would fire on most of the catalogue
 and mean nothing. The ratio only carries information once the absolute
 quantity is non-trivial.
 
-**Confidence:** medium. Both numbers are arbitrary and need tuning
-against real data — the floor more urgently than the multiple, since it
-is what separates the signal from background.
+**Confidence:** low, and **S-2 is UNSCORED until it has a distribution.**
+Decided before run 1, not after seeing its output.
+
+Run 0 fired S-2 on 27% of offers (78/293), concentrated on parts whose
+authorized stock was 3 and 8 units — where the 10x multiple clears at 30
+and 80 and the floor of 100 barely binds. `S2_MIN_QTY = 100` is too low
+to carry the intended meaning on a dwindling channel, and a dwindling
+channel is precisely what a drained-vintage run 1 sample contains. Expect
+S-2 to be noisier on run 1, not less.
+
+The threshold is deliberately not changed on a 10-part sample. Reading a
+signal already believed miscalibrated is how a threshold ends up set by
+whatever the first sample happened to look like. Collect the distribution
+of `broker_quantity / authorized_stock` across a real sample first, then
+choose. `report()` prints an UNSCORED warning whenever S-2 exceeds 10% of
+offers.
 
 ### S-3 `underpriced`
 
@@ -549,6 +562,21 @@ observed free allowance, evaluation app     10 parts
 observed allowance, self-created app         0 parts
 ```
 
+**Measured against run 0, 1 September 2026** — replacing the assumed
+figures above with observed consumption:
+
+```
+parts requested                             54
+parts that returned data before quota ran   10
+offers returned                            293   (~30 offers per part)
+```
+
+Billing is per part with coverage, not per offer, so the ~1:1 ratio
+holds and the free tier covers 10 parts. A 200-part run 2 therefore
+needs roughly 20x the free allowance, and run 1 at 30–50 parts needs
+3–5x it. Size any purchase against these numbers rather than the
+estimate they replace.
+
 Roughly a 20x shortfall against the observed free tier. The 200 figure
 is the validation threshold in section 15 and is itself a judgement, not
 a computed number; the ~1:1 ratio holds only on the curated-list path,
@@ -671,6 +699,39 @@ running the tool. They are independent and should run in parallel.
   rather than testing it beforehand, is an excuse and is indistinguish-
   able in this document from a pre-registered condition. That is why the
   test is named here and why run 0 comes first.
+
+  **A run has three outcomes, not two.** The condition above was written
+  to stop an *empty* result being explained away. It does not cleanly
+  govern a sample that fires hard on the one part meeting S-1's
+  precondition — a different situation, and one that has already
+  occurred (run 0, 1 September 2026).
+
+  | outcome | meaning |
+  |---|---|
+  | supported | condition met, `phantom_stock` fires |
+  | not supported | condition met, `phantom_stock` does not fire — **this is what kills** |
+  | could not test | condition not met; the sample says nothing either way |
+
+  "Could not test" is not a weak "not supported". Record which one
+  occurred, because a future reader seeing `run 1 INVALID` next to a
+  positive observation needs to know which kind of invalid it was.
+
+  **A drained part resting on one authorized offer does not count as
+  drained.** Remove that single inventory line and the part becomes
+  `no_authorized_coverage`, the state excluded from scoring — so one
+  seller is all that separates "channel exhausted" from "artefact". The
+  drained count therefore requires **at least two authorized sellers,
+  all at zero**. Reported separately as `drained/thin`, and excluded
+  from the fraction the condition is measured on.
+
+  This is not hypothetical. Run 0's single drained part had exactly one
+  authorized offer; under the robust definition the drained fraction is
+  0%, not 10%.
+
+  **Run 1 collection requirement.** The 2019–2022 list must be curated
+  for parts likely to carry *several* authorized sellers, so that "all
+  at zero" is a statement about the channel rather than about one
+  seller's listing.
 - Fewer than 5 anomalies across 200 parts (run 2)
 - Interviewees consistently say broker choice is relationship-based
 - The problem is real but sits entirely with distributors who already

@@ -540,30 +540,39 @@ def report(offers: list[Offer], demo: bool = False) -> None:
         if o.is_obsolete:
             by_part.setdefault(o.mpn.upper(), []).append(o)
     if by_part:
-        drained, stocked, no_cover = [], [], []
+        drained, fragile, stocked, no_cover = [], [], [], []
         for mpn, g in by_part.items():
             o = g[0]
             if o.authorized_offers == 0:
                 no_cover.append(mpn)
             elif o.authorized_stock == 0:
-                drained.append(mpn)
+                # A drained part resting on ONE authorized offer is a
+                # thin thread: remove that single inventory line and the
+                # part becomes no_authorized_coverage, the state that is
+                # explicitly excluded from scoring. One seller is then
+                # all that separates "channel exhausted" from "artefact".
+                (drained if o.authorized_offers >= 2 else fragile).append(mpn)
             else:
                 stocked.append(mpn)
         n = len(by_part)
         print(f"\n  CHANNEL STATE  ({n} obsolete parts)")
         print(f"    drained      {len(drained):>4}  {len(drained)/n:>6.1%}  "
-              f"authorized sellers present, zero stock -- S-1 can fire")
+              f">=2 authorized sellers, all at zero -- S-1 can fire")
+        print(f"    drained/thin {len(fragile):>4}  {len(fragile)/n:>6.1%}  "
+              f"exactly 1 authorized seller at zero -- one inventory")
+        print(f"                                    line from being "
+              f"no-coverage; do not rely on")
         print(f"    stocked      {len(stocked):>4}  {len(stocked)/n:>6.1%}  "
               f"authorized stock remains -- S-1 cannot fire")
         print(f"    no coverage  {len(no_cover):>4}  {len(no_cover)/n:>6.1%}  "
               f"no authorized offers at all -- data artefact, not a")
         print(f"                                    market fact; excluded "
               f"from the fraction")
-        testable = len(drained) + len(stocked)
+        testable = len(drained) + len(fragile) + len(stocked)
         if testable:
             frac = len(drained) / testable
-            print(f"\n    drained fraction of parts with authorized "
-                  f"coverage: {frac:.1%}")
+            print(f"\n    drained fraction (robust only) of parts with "
+                  f"authorized coverage: {frac:.1%}")
             print(f"    PRD s15 pre-registered condition (>= 50%): "
                   f"{'MET' if frac >= 0.5 else 'NOT MET'}"
                   f" -- run 1 {'valid' if frac >= 0.5 else 'INVALID'} "
@@ -573,6 +582,19 @@ def report(offers: list[Offer], demo: bool = False) -> None:
                   "fraction is undefined,")
             print("    not zero. Nothing can be concluded about the "
                   "channel from this sample.")
+
+    s2 = [o for o in offers if "outstocks_channel" in o.flags]
+    if s2 and offers:
+        rate = len(s2) / len(offers)
+        if rate > 0.10:
+            print(f"\n  S-2 fired on {rate:.0%} of offers "
+                  f"({len(s2)}/{len(offers)}).")
+            print("    Treat outstocks_channel as UNSCORED. S2_MIN_QTY is")
+            print("    known-miscalibrated on a dwindling channel, and a")
+            print("    dwindling channel is exactly what a drained-vintage")
+            print("    sample contains. Collect the distribution first; do")
+            print("    not set the threshold from whatever this run looks")
+            print("    like.")
 
     print("\n  VERDICT")
     if len(phantom) >= 20:
