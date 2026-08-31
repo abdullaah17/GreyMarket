@@ -3,7 +3,9 @@ __pycache__/
 .venv/
 
 # run artifacts
-parts.csv
+# NOTE: parts.csv is NOT ignored. It was a discover output when discover was
+# the primary input path; it is now a hand-curated, sourced input and the most
+# expensive artifact in the repo (see CURATION.md). It is tracked deliberately.
 listings.csv
 
 # credentials -- never commit; pass via environment
