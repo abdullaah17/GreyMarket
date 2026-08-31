@@ -124,3 +124,25 @@ When `scan` returns results, check the manufacturer on each row against the
 manufacturer, so also spot-check that the returned part family matches the
 `family` column. Rows whose manufacturer disagrees with the notice are
 transcription errors, not market findings.
+
+## The two run-1 criteria pull against each other
+
+Run 1 needs parts that are **drained** (channel actually empty) and that have
+**several authorized sellers** (so "all at zero" describes the channel rather
+than one seller's listing). These correlate in opposite directions:
+
+- parts with broad authorized distribution are generally **higher volume**
+- parts whose channel fully drained years ago are generally **low volume** —
+  that is part of why it emptied and why nobody restocked
+
+The intersection is not empty but it is narrower than either criterion alone.
+Optimising for seller count will tend to pull the sample back toward parts
+that are still stocked.
+
+**Order: vintage first, seller count second.** Go old enough that drainage is
+near-certain, then within that set prefer parts with broader distribution.
+
+**If you must sacrifice one, sacrifice sample size.** Under the robust rule
+(PRD s15) a `drained/thin` part contributes nothing: twenty thin parts still
+give a 0% robust fraction. Ten robust parts beat forty thin ones. Decided
+before collecting, so the choice is not made by whatever the search turns up.

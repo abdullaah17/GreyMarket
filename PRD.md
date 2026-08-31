@@ -657,6 +657,21 @@ Ordered by how much damage a wrong assumption does.
 5. Would a buyer act on a signal that carries no known-bad confirmation?
 6. Does the same problem exist outside electronics — aerospace
    fasteners, bearings, valves?
+7. **How large is the population S-1 can fire on at all?** Two
+   observations narrow it, and they compound:
+   - Section 2.4: of ~200 discontinued TI devices, none were
+     forced-to-broker — almost all had equivalents still sold through
+     authorized channels.
+   - Run 0: proving exhaustion from listing data needs a part with
+     several authorized sellers all at zero, and that may be rare
+     precisely because broad distribution correlates with the volume
+     that keeps a channel stocked (see `CURATION.md`).
+
+   If multi-seller-drained parts turn out to be genuinely scarce, that
+   is a finding about the addressable population, not a sampling
+   problem. **Held loosely: two data points, neither measured.** Do not
+   quote it as established, and do not let it justify abandoning the
+   search before the search has been done.
 
 Questions 1–3 are answered by conversations. Question 4 is answered by
 running the tool. They are independent and should run in parallel.
