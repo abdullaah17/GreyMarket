@@ -197,10 +197,24 @@ section 7.
 
 This is the core intellectual property. Everything else is plumbing.
 
+**Lifecycle is a four-value class, not a boolean:** `OBSOLETE`, `NRND`,
+`ACTIVE`, `UNKNOWN`. S-1 through S-4 fire on `OBSOLETE` only. An NRND
+part is still being manufactured, so an empty authorized channel is not
+channel exhaustion — the stock can refill next week. NRND parts are
+still collected and reported, as a separate observation, because zero
+authorized stock on an in-production part is interesting for its own
+reasons. Folding NRND into obsolete would dilute S-1.
+
+Classification lives in `lifecycle.py` and is covered by a regression
+test over real vendor strings (`python3 lifecycle.py`). Precedence is
+`OBSOLETE > NRND > ACTIVE > UNKNOWN`, so "Discontinued — Not
+Recommended for New Designs" is obsolete while "NRND / Last Time Buy"
+is not.
+
 ### S-1 `phantom_stock`
 
 ```
-part.lifecycle is obsolete
+part.lifecycle_class == OBSOLETE
 AND authorized_stock == 0
 AND offer.authorized == false
 AND offer.quantity >= 1000
@@ -217,46 +231,96 @@ The claim is that this warrants a question, not that it proves fraud.
 ### S-2 `outstocks_channel`
 
 ```
-part.lifecycle is obsolete
+part.lifecycle_class == OBSOLETE
 AND authorized_stock > 0
 AND offer.quantity > authorized_stock * 10
+AND offer.quantity >= 100          # absolute floor, S2_MIN_QTY
 ```
 
 **Reasoning.** A weaker form of S-1 for parts with residual authorized
 supply. One unauthorized seller holding an order of magnitude more than
 the entire legitimate channel is anomalous.
 
-**Confidence:** medium. Threshold is arbitrary and needs tuning against
-real data.
+**The multiple alone is near-worthless and the floor is load-bearing.**
+Authorized stock on an obsolete part dwindles by definition — that is
+what obsolescence is. A distributor down to 3 units is the normal case,
+not an unusual one, and against that denominator any broker holding 31
+units clears a 10x threshold. That is an obsolete part behaving exactly
+as expected, and without a floor S-2 would fire on most of the catalogue
+and mean nothing. The ratio only carries information once the absolute
+quantity is non-trivial.
+
+**Confidence:** medium. Both numbers are arbitrary and need tuning
+against real data — the floor more urgently than the multiple, since it
+is what separates the signal from background.
 
 ### S-3 `underpriced`
 
 ```
-part.lifecycle is obsolete
+part.lifecycle_class == OBSOLETE
 AND offer.authorized == false
 AND offer.unit_price <= median_price * 0.5
+
+where every price is read at the same quantity tier (REFERENCE_QTY = 1)
 ```
 
 **Reasoning.** Scarcity raises prices. Obsolete parts appreciate. A
 below-median price on a discontinued part inverts the expected economics.
 
-**Confidence:** medium. Confounded by currency, condition, minimum order
-quantity, and stale listings.
+**Price breaks must be compared at one tier.** Sellers publish
+different numbers of price breaks, and the count is not random with
+respect to the thing being measured: authorized distributors typically
+publish many breaks, brokers typically one. Taking each seller's
+cheapest break therefore compares a broker's single-unit price against a
+distributor's volume price. That pulls the median down and suppresses
+`underpriced` in exactly the direction that hides the anomaly. The
+implementation reads every seller at `REFERENCE_QTY`, and records
+`price_qty` and `price_break_count` so the asymmetry stays auditable.
 
-### S-4 `catalogue_implausibility` `[PLANNED — v0.2]`
+**Confidence:** medium. Confounded by currency, condition, minimum order
+quantity, and stale listings. The tier correction removes one known bias
+but has not been checked against live data — verify the real break-count
+gap between authorized sellers and brokers before tuning the 0.5
+threshold.
+
+### S-4 `catalogue_implausibility` `[BUILT]`
 
 ```
-count of distinct obsolete parts one seller claims stock of
+scanned_obsolete    = distinct parts in this run with lifecycle_class OBSOLETE
+seller_obsolete     = distinct scanned_obsolete parts this unauthorized
+                      seller claims stock of
+
+share = seller_obsolete / scanned_obsolete
+
+fires when  len(scanned_obsolete) >= 20  AND  share >= 0.30
 ```
 
 **Reasoning.** A broker legitimately holding surplus stock holds a
 *narrow* range — whatever they acquired. A seller claiming inventory
 across hundreds of unrelated obsolete parts across many manufacturers is
 either a pure intermediary listing stock they don't hold, or worse.
+Requires no external data — it falls out of aggregating data already
+collected.
 
-**This is likely the strongest signal in the system**, and it requires
-no external data — it falls out of aggregating data already collected.
-Build it next.
+**Confidence:** low until tested against real data. Two confounds, both
+material, and both must be stated wherever this signal is shown:
+
+1. **Sample-dependent.** The denominator is whatever this run happened
+   to scan. Scan 200 microcontrollers and a microcontroller specialist
+   scores high for entirely legitimate reasons. The share is a property
+   of the query as much as of the seller.
+2. **Cannot distinguish breadth from fabrication.** A large independent
+   distributor with a genuinely broad book and a seller listing stock
+   they do not hold produce the same number.
+
+It is a ranking hint for which sellers to look at first. It is not
+evidence about any seller, and per principle 2 it must never be
+presented as one. The 0.30 threshold and the 20-part minimum are both
+arbitrary and await real data.
+
+Because the denominator is the scan, S-4 scores are comparable *within*
+one run and not *across* runs. Do not store a seller's share as a
+standing attribute.
 
 ### Signals explicitly rejected
 
@@ -275,23 +339,30 @@ Part
   mpn                 str    manufacturer part number, primary key
   manufacturer        str
   category            str
-  lifecycle           str    raw vendor string
-  is_obsolete         bool   derived
+  lifecycle           str    raw vendor string, preserved verbatim
+  lifecycle_class     enum   OBSOLETE | NRND | ACTIVE | UNKNOWN, derived
 
 Offer
   mpn                 str    -> Part
   seller              str
   authorized          bool
   quantity            int    claimed inventory, self-declared
-  unit_price          float
+  unit_price          float  read at REFERENCE_QTY, not the cheapest break
+  price_qty           int    tier the price was read at
+  price_break_count   int    how many breaks the seller published
   currency            str
-  retrieved_at        ts
+  retrieved_at        ts     stamped once per part fetch, so all rows
+                             from one part share a retrieval time
 
 PartAggregate         computed per part
   authorized_stock    int
   broker_stock        int
-  median_price        float
+  median_price        float  median across offers read at one tier
   seller_count        int
+
+SellerAggregate       computed per run, not per part
+  seller              str
+  obsolete_share      float  S-4; valid only within the run that made it
 
 Flag
   offer_ref
